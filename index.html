@@ -1,11 +1,245 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>My Telegram App</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Гарри — календарь</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #1a1a1a);
+    --hint: var(--tg-theme-hint-color, #7d7d7d);
+    --link: var(--tg-theme-link-color, #cc8b3c);
+    --accent: var(--tg-theme-button-color, #cc8b3c);
+    --section-bg: var(--tg-theme-secondary-bg-color, #f4f4f2);
+    --rule: color-mix(in srgb, var(--hint) 25%, transparent);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 0 0 2rem;
+  }
+  header {
+    padding: 1.1rem 1rem 0.9rem;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 5;
+  }
+  header h1 {
+    font-size: 1.3rem;
+    margin: 0 0 0.15rem;
+    font-weight: 700;
+  }
+  header p {
+    margin: 0;
+    color: var(--hint);
+    font-size: 0.85rem;
+  }
+  .tabs {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.6rem 1rem 0;
+    overflow-x: auto;
+  }
+  .tab {
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    border-radius: 99px;
+    background: var(--section-bg);
+    color: var(--hint);
+    white-space: nowrap;
+    border: none;
+  }
+  .tab.active { background: var(--accent); color: #fff; }
+
+  main { padding: 0.6rem 1rem; }
+
+  .day-group { margin-bottom: 1.1rem; }
+  .day-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--hint);
+    margin: 0 0 0.45rem 0.2rem;
+  }
+  .event-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    background: var(--section-bg);
+    border-radius: 12px;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+  .event-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    width: 2.1rem;
+    height: 2.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border-radius: 50%;
+  }
+  .event-body { flex: 1; min-width: 0; }
+  .event-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .event-meta {
+    font-size: 0.78rem;
+    color: var(--hint);
+    margin-top: 0.1rem;
+  }
+  .event-time {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--link);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .recur-badge {
+    font-size: 0.68rem;
+    color: var(--hint);
+    margin-left: 0.3em;
+  }
+
+  .empty, .loading, .error {
+    text-align: center;
+    color: var(--hint);
+    padding: 3rem 1rem;
+    font-size: 0.9rem;
+  }
+  .error { color: #c0503f; }
+
+  .spinner {
+    width: 22px; height: 22px;
+    border: 2.5px solid var(--rule);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 0.8rem;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation: none; }
+  }
+</style>
 </head>
 <body>
-  <h1>Привет из мини-приложения!</h1>
+  <header>
+    <h1>Привет 👋</h1>
+    <p id="subtitle">твой календарь с Гарри</p>
+  </header>
+  <div class="tabs">
+    <button class="tab active" data-tab="calendar">Календарь</button>
+  </div>
+  <main id="content">
+    <div class="loading"><div class="spinner"></div>Загружаю…</div>
+  </main>
+
+<script>
+const API_BASE = "https://157-230-218-61.nip.io";
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const EVENT_ICONS = {
+  "врач": "🩺", "встреча": "🤝", "тренировка": "🏃", "холостая луна": "🌑",
+  "день рождения": "🎂",
+};
+const RECUR_LABELS = { yearly: "ежегодно", monthly: "ежемесячно", weekly: "еженедельно", daily: "ежедневно" };
+
+function iconFor(type) { return EVENT_ICONS[type] || "📌"; }
+
+function fmtDayLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (d.getTime() === today.getTime()) return "Сегодня";
+  if (d.getTime() === tomorrow.getTime()) return "Завтра";
+  return d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function fmtTime(datetimeStr) {
+  return datetimeStr.slice(11, 16);
+}
+
+async function loadCalendar() {
+  const content = document.getElementById("content");
+  const initData = tg?.initData || "";
+
+  if (!initData) {
+    content.innerHTML = '<div class="error">Открой это через кнопку в Telegram-боте — напрямую в браузере данные не показать (нужна авторизация Telegram).</div>';
+    return;
+  }
+
+  try {
+    const res = await fetch(API_BASE + "/api/calendar", {
+      headers: { "X-Telegram-Init-Data": initData },
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const events = await res.json();
+    renderCalendar(events);
+  } catch (err) {
+    content.innerHTML = '<div class="error">Не получилось загрузить: ' + err.message + '</div>';
+  }
+}
+
+function renderCalendar(events) {
+  const content = document.getElementById("content");
+  if (!events.length) {
+    content.innerHTML = '<div class="empty">Пока ничего нет в календаре</div>';
+    return;
+  }
+
+  const now = new Date();
+  const upcoming = events.filter(e => new Date(e.event_datetime.replace(" ", "T")) >= now || e.is_recurring);
+  const byDay = {};
+  for (const e of upcoming) {
+    const day = e.event_datetime.slice(0, 10);
+    (byDay[day] ??= []).push(e);
+  }
+  const days = Object.keys(byDay).sort();
+
+  let html = "";
+  for (const day of days) {
+    html += `<div class="day-group"><div class="day-label">${fmtDayLabel(day)}</div>`;
+    for (const e of byDay[day]) {
+      const recur = e.is_recurring && RECUR_LABELS[e.recurrence_rule]
+        ? `<span class="recur-badge">· ${RECUR_LABELS[e.recurrence_rule]}</span>` : "";
+      html += `
+        <div class="event-card">
+          <div class="event-icon">${iconFor(e.event_type)}</div>
+          <div class="event-body">
+            <div class="event-title">${escapeHtml(e.title)}</div>
+            <div class="event-meta">${escapeHtml(e.event_type)}${recur}</div>
+          </div>
+          <div class="event-time">${fmtTime(e.event_datetime)}</div>
+        </div>`;
+    }
+    html += `</div>`;
+  }
+  content.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+loadCalendar();
+</script>
 </body>
 </html>
