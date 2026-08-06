@@ -257,6 +257,63 @@
     color: var(--hint);
     text-decoration: line-through;
   }
+
+  /* Финансы */
+  .stat-tile.income .stat-value { color: var(--sage, #4f7d59); }
+  .stat-tile.expense .stat-value { color: var(--clay, #a34a37); }
+  .stat-tile.net .stat-value.negative { color: var(--clay, #a34a37); }
+
+  .cat-row {
+    margin-bottom: 0.65rem;
+  }
+  .cat-row:last-child { margin-bottom: 0; }
+  .cat-row-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    margin-bottom: 0.3rem;
+  }
+  .cat-name { text-transform: capitalize; }
+  .cat-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cat-track {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .cat-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+  }
+
+  .txn-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .txn-row:last-child { border-bottom: none; }
+  .txn-body { flex: 1; min-width: 0; }
+  .txn-cat {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .txn-meta {
+    font-size: 0.76rem;
+    color: var(--hint);
+    margin-top: 0.1rem;
+  }
+  .txn-amount {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+  .txn-amount.income { color: var(--sage, #4f7d59); }
+  .txn-amount.expense { color: var(--text); }
 </style>
 </head>
 <body>
@@ -268,6 +325,7 @@
     <button class="tab active" data-tab="calendar">Календарь</button>
     <button class="tab" data-tab="food">Калории</button>
     <button class="tab" data-tab="plans">Планы</button>
+    <button class="tab" data-tab="finance">Финансы</button>
   </div>
   <main id="content">
     <div class="loading"><div class="spinner"></div>Загружаю…</div>
@@ -478,8 +536,73 @@ function renderPlans(data) {
   });
 }
 
+/* ---------- Финансы ---------- */
+async function loadFinance() {
+  const content = document.getElementById("content");
+  if (!initData) { content.innerHTML = noAuthNotice(); return; }
+  try {
+    const data = await apiGet("/api/finance-summary");
+    renderFinance(data);
+  } catch (err) {
+    content.innerHTML = '<div class="error">Не получилось загрузить: ' + err.message + '</div>';
+  }
+}
+
+const RUB = new Intl.NumberFormat("ru-RU");
+
+function renderFinance(data) {
+  const content = document.getElementById("content");
+  const net = data.month_income - data.month_expense;
+  const maxCat = Math.max(1, ...data.by_category.map(c => c.total));
+
+  const catHtml = data.by_category.length
+    ? data.by_category.map(c => `
+        <div class="cat-row">
+          <div class="cat-row-top">
+            <span class="cat-name">${escapeHtml(c.category)}</span>
+            <span class="cat-amount">${RUB.format(c.total)} ₽</span>
+          </div>
+          <div class="cat-track"><div class="cat-fill" style="width:${Math.round(c.total / maxCat * 100)}%"></div></div>
+        </div>`).join("")
+    : '<div class="empty" style="padding:1rem;">Трат в этом месяце пока нет</div>';
+
+  const txnHtml = data.recent.length
+    ? data.recent.map(t => {
+        const sign = t.type === "доход" ? "+" : "−";
+        const cls = t.type === "доход" ? "income" : "expense";
+        const dateStr = t.logged_at.slice(0, 10);
+        const meta = [t.merchant, dateStr].filter(Boolean).join(" · ");
+        return `
+          <div class="txn-row">
+            <div class="txn-body">
+              <div class="txn-cat">${escapeHtml(t.category || "без категории")}</div>
+              <div class="txn-meta">${escapeHtml(meta)}</div>
+            </div>
+            <div class="txn-amount ${cls}">${sign}${RUB.format(t.amount)} ₽</div>
+          </div>`;
+      }).join("")
+    : '<div class="empty" style="padding:1rem;">Пока пусто</div>';
+
+  content.innerHTML = `
+    <div class="stat-row">
+      <div class="stat-tile income"><div class="stat-value">${RUB.format(data.month_income)}</div><div class="stat-label">доход в этом месяце</div></div>
+      <div class="stat-tile expense"><div class="stat-value">${RUB.format(data.month_expense)}</div><div class="stat-label">расход в этом месяце</div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-tile net"><div class="stat-value${net < 0 ? " negative" : ""}">${net >= 0 ? "+" : ""}${RUB.format(net)} ₽</div><div class="stat-label">баланс за месяц</div></div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">Расходы по категориям</div>
+      ${catHtml}
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">Последние операции</div>
+      ${txnHtml}
+    </div>`;
+}
+
 /* ---------- Вкладки ---------- */
-const LOADERS = { calendar: loadCalendar, food: loadFood, plans: loadPlans };
+const LOADERS = { calendar: loadCalendar, food: loadFood, plans: loadPlans, finance: loadFinance };
 
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
