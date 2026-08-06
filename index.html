@@ -329,6 +329,153 @@
   .line-chart .line-dot.last { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
   .line-chart .line-grid { stroke: var(--rule); stroke-width: 1; }
   .steps-bars .bar { background: var(--sage, #4f7d59); }
+
+  /* Вишлист */
+  .wish-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+  }
+  .wish-card {
+    background: var(--section-bg);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .wish-photo {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    background: var(--bg);
+    display: block;
+  }
+  .wish-photo-empty {
+    width: 100%;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    background: var(--bg);
+  }
+  .wish-body { padding: 0.6rem 0.7rem 0.75rem; }
+  .wish-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+    min-height: 2.2em;
+  }
+  .wish-price {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--link);
+    margin-top: 0.3rem;
+  }
+  .wish-priority {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.15em 0.5em;
+    border-radius: 99px;
+    background: var(--bg);
+    color: var(--hint);
+    margin-top: 0.35rem;
+    text-transform: capitalize;
+  }
+  .wish-link {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--link);
+    text-decoration: none;
+  }
+  .wish-bought { opacity: 0.5; }
+
+  /* Заметки */
+  .note-card {
+    background: var(--section-bg);
+    border-radius: 12px;
+    padding: 0.8rem 0.9rem;
+    margin-bottom: 0.6rem;
+  }
+  .note-text {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+  .note-photo {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+    display: block;
+  }
+  .note-date {
+    font-size: 0.72rem;
+    color: var(--hint);
+    margin-top: 0.4rem;
+  }
+
+  /* Аскезы/цели */
+  .practice-card {
+    background: var(--section-bg);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.7rem;
+  }
+  .practice-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .practice-title { font-size: 0.98rem; font-weight: 700; }
+  .practice-type {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15em 0.55em;
+    border-radius: 99px;
+    background: var(--bg);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+  .practice-dates {
+    font-size: 0.76rem;
+    color: var(--hint);
+    margin-top: 0.15rem;
+  }
+  .practice-intention {
+    font-size: 0.82rem;
+    font-style: italic;
+    color: var(--hint);
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--rule);
+  }
+  .practice-items { margin-top: 0.6rem; }
+  .practice-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+  }
+  .pi-desc { font-size: 0.86rem; flex: 1; }
+  .pi-target { font-size: 0.74rem; color: var(--hint); }
+  .pi-progress {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
@@ -342,13 +489,16 @@
     <button class="tab" data-tab="plans">Планы</button>
     <button class="tab" data-tab="finance">Финансы</button>
     <button class="tab" data-tab="health">Вес</button>
+    <button class="tab" data-tab="wishlist">Вишлист</button>
+    <button class="tab" data-tab="notes">Заметки</button>
+    <button class="tab" data-tab="practices">Аскезы</button>
   </div>
   <main id="content">
     <div class="loading"><div class="spinner"></div>Загружаю…</div>
   </main>
 
 <script>
-const API_BASE = "https://157-230-218-61.nip.io";
+const API_BASE = ""; // served from the same origin as the API now
 const tg = window.Telegram?.WebApp;
 if (tg) { tg.ready(); tg.expand(); }
 const initData = tg?.initData || "";
@@ -705,7 +855,119 @@ function renderHealth(data) {
 }
 
 /* ---------- Вкладки ---------- */
-const LOADERS = { calendar: loadCalendar, food: loadFood, plans: loadPlans, finance: loadFinance, health: loadHealth };
+/* ---------- Вишлист ---------- */
+async function loadWishlist() {
+  const content = document.getElementById("content");
+  if (!initData) { content.innerHTML = noAuthNotice(); return; }
+  try {
+    const items = await apiGet("/api/wishlist");
+    renderWishlist(items);
+  } catch (err) {
+    content.innerHTML = '<div class="error">Не получилось загрузить: ' + err.message + '</div>';
+  }
+}
+
+function renderWishlist(items) {
+  const content = document.getElementById("content");
+  if (!items.length) { content.innerHTML = '<div class="empty">Вишлист пока пуст</div>'; return; }
+
+  const cards = items.map(w => {
+    const bought = w.status !== "active";
+    const photo = w.photo_url
+      ? `<img class="wish-photo" src="${API_BASE}${w.photo_url}" alt="">`
+      : `<div class="wish-photo-empty">🎁</div>`;
+    const link = w.url ? `<a class="wish-link" href="${w.url}" target="_blank" rel="noopener">Открыть →</a>` : "";
+    const price = w.price ? `<div class="wish-price">${escapeHtml(w.price)}</div>` : "";
+    const priority = w.priority ? `<span class="wish-priority">${escapeHtml(w.priority)}</span>` : "";
+    return `
+      <div class="wish-card${bought ? " wish-bought" : ""}">
+        ${photo}
+        <div class="wish-body">
+          <div class="wish-title">${escapeHtml(w.title)}</div>
+          ${price}
+          ${priority}
+          ${link}
+        </div>
+      </div>`;
+  }).join("");
+
+  content.innerHTML = `<div class="wish-grid">${cards}</div>`;
+}
+
+/* ---------- Заметки ---------- */
+async function loadNotes() {
+  const content = document.getElementById("content");
+  if (!initData) { content.innerHTML = noAuthNotice(); return; }
+  try {
+    const items = await apiGet("/api/notes");
+    renderNotes(items);
+  } catch (err) {
+    content.innerHTML = '<div class="error">Не получилось загрузить: ' + err.message + '</div>';
+  }
+}
+
+function renderNotes(items) {
+  const content = document.getElementById("content");
+  if (!items.length) { content.innerHTML = '<div class="empty">Заметок пока нет</div>'; return; }
+
+  content.innerHTML = items.map(n => {
+    const photo = n.photo_url ? `<img class="note-photo" src="${API_BASE}${n.photo_url}" alt="">` : "";
+    const date = new Date(n.created_at.replace(" ", "T")).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    return `
+      <div class="note-card">
+        <div class="note-text">${escapeHtml(n.text)}</div>
+        ${photo}
+        <div class="note-date">${date}</div>
+      </div>`;
+  }).join("");
+}
+
+/* ---------- Аскезы/цели ---------- */
+async function loadPractices() {
+  const content = document.getElementById("content");
+  if (!initData) { content.innerHTML = noAuthNotice(); return; }
+  try {
+    const items = await apiGet("/api/practices");
+    renderPractices(items);
+  } catch (err) {
+    content.innerHTML = '<div class="error">Не получилось загрузить: ' + err.message + '</div>';
+  }
+}
+
+function renderPractices(practicesList) {
+  const content = document.getElementById("content");
+  if (!practicesList.length) { content.innerHTML = '<div class="empty">Нет активных аскез/целей</div>'; return; }
+
+  content.innerHTML = practicesList.map(p => {
+    const itemsHtml = p.items.map(it => `
+      <div class="practice-item-row">
+        <div>
+          <div class="pi-desc">${escapeHtml(it.description)}</div>
+          ${it.target ? `<div class="pi-target">${escapeHtml(it.target)}</div>` : ""}
+        </div>
+        <div class="pi-progress">${it.done_count}/${it.total_logged || 0}</div>
+      </div>`).join("");
+    const intention = p.intention ? `<div class="practice-intention">🌌 ${escapeHtml(p.intention)}</div>` : "";
+    const endStr = p.end_date ? new Date(p.end_date + "T00:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : "";
+    return `
+      <div class="practice-card">
+        <div class="practice-top">
+          <div>
+            <div class="practice-title">${escapeHtml(p.title)}</div>
+            <div class="practice-dates">до ${endStr}</div>
+          </div>
+          <span class="practice-type">${escapeHtml(p.type)}</span>
+        </div>
+        <div class="practice-items">${itemsHtml}</div>
+        ${intention}
+      </div>`;
+  }).join("");
+}
+
+const LOADERS = {
+  calendar: loadCalendar, food: loadFood, plans: loadPlans, finance: loadFinance,
+  health: loadHealth, wishlist: loadWishlist, notes: loadNotes, practices: loadPractices,
+};
 
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
