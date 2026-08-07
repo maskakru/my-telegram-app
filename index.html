@@ -7,13 +7,25 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --text: var(--tg-theme-text-color, #1a1a1a);
-    --hint: var(--tg-theme-hint-color, #7d7d7d);
-    --link: var(--tg-theme-link-color, #cc8b3c);
-    --accent: var(--tg-theme-button-color, #cc8b3c);
-    --section-bg: var(--tg-theme-secondary-bg-color, #f4f4f2);
-    --rule: color-mix(in srgb, var(--hint) 25%, transparent);
+    /* Deliberately fixed dark theme — Harry's own look, not Telegram's adaptive one. */
+    --bg: #0e1220;
+    --bg-elevated: #1a2036;
+    --bg-elevated-2: #232b4a;
+    --text: #eef0f7;
+    --hint: #8b91ab;
+    --link: #ffb15c;
+    --accent: #ff9f43;
+    --accent-2: #ff5f9e;
+    --section-bg: var(--bg-elevated);
+    --rule: #2b3252;
+
+    /* macro / semantic accents */
+    --c-protein: #5ac8fa;
+    --c-fat: #ffcc4d;
+    --c-carbs: #ff6b81;
+    --grad-start: #ff5f9e;
+    --grad-mid: #ff9f43;
+    --grad-end: #22e6c8;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
@@ -144,25 +156,63 @@
   }
   .stat-tile {
     flex: 1;
-    background: var(--section-bg);
-    border-radius: 12px;
-    padding: 0.7rem 0.8rem;
+    position: relative;
+    background: linear-gradient(160deg, var(--bg-elevated-2), var(--bg-elevated));
+    border-radius: 14px;
+    padding: 0.8rem 0.9rem 0.75rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+  }
+  .stat-tile::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--tile-accent, var(--accent));
   }
   .stat-tile .stat-value {
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: 1.4rem;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
+    color: var(--text);
   }
   .stat-tile .stat-label {
     font-size: 0.72rem;
     color: var(--hint);
+    margin-top: 0.15rem;
+  }
+  .macro-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.2rem;
+  }
+  .macro-tile {
+    flex: 1;
+    background: var(--bg-elevated);
+    border-radius: 12px;
+    padding: 0.65rem 0.5rem;
+    text-align: center;
+    border-top: 3px solid var(--macro-color);
+  }
+  .macro-tile .macro-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--macro-color);
+  }
+  .macro-tile .macro-label {
+    font-size: 0.66rem;
+    color: var(--hint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     margin-top: 0.1rem;
   }
   .chart-wrap {
-    background: var(--section-bg);
-    border-radius: 12px;
-    padding: 1rem 0.9rem 0.7rem;
+    background: linear-gradient(165deg, var(--bg-elevated-2), var(--bg-elevated));
+    border-radius: 16px;
+    padding: 1.1rem 1rem 0.8rem;
     margin-bottom: 1rem;
+    border: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
   }
   .chart-title {
     font-size: 0.78rem;
@@ -170,7 +220,32 @@
     color: var(--hint);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin-bottom: 0.7rem;
+    margin-bottom: 0.9rem;
+  }
+  .grad-chart { width: 100%; height: 140px; display: block; overflow: visible; }
+  .grad-chart .area-fill { fill: url(#gradArea); }
+  .grad-chart .line-stroke {
+    fill: none;
+    stroke: url(#gradLine);
+    stroke-width: 3;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgba(255, 95, 158, 0.45));
+  }
+  .grad-chart .grid-line { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 4; }
+  .grad-chart .pt { fill: var(--bg-elevated); stroke-width: 2.5; }
+  .grad-chart .pt-label {
+    font-size: 9px;
+    font-weight: 700;
+    fill: var(--text);
+    text-anchor: middle;
+    font-variant-numeric: tabular-nums;
+  }
+  .grad-chart .day-label {
+    font-size: 9px;
+    fill: var(--hint);
+    text-anchor: middle;
+    text-transform: capitalize;
   }
   .bars {
     display: flex;
@@ -658,12 +733,65 @@ async function loadFood() {
   }
 }
 
+// Shared gradient-line/area chart: points = [{label, value}], glowing
+// magenta->amber->teal stroke, soft fill beneath, value+day labels.
+function gradientLineChart(points) {
+  const W = 320, H = 140, PAD_X = 22, PAD_TOP = 22, PAD_BOTTOM = 20;
+  const values = points.map(p => p.value);
+  const max = Math.max(1, ...values);
+  const innerW = W - PAD_X * 2;
+  const step = points.length > 1 ? innerW / (points.length - 1) : 0;
+  const baseY = H - PAD_BOTTOM;
+
+  const coords = points.map((p, i) => {
+    const x = PAD_X + i * step;
+    const y = baseY - (p.value / max) * (baseY - PAD_TOP);
+    return [x, y];
+  });
+
+  const linePath = coords.map(([x, y], i) => (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1)).join(" ");
+  const areaPath = linePath + ` L${coords[coords.length - 1][0].toFixed(1)} ${baseY} L${coords[0][0].toFixed(1)} ${baseY} Z`;
+
+  const grid = [0.25, 0.5, 0.75].map(f => {
+    const y = baseY - f * (baseY - PAD_TOP);
+    return `<line class="grid-line" x1="${PAD_X}" y1="${y.toFixed(1)}" x2="${W - PAD_X}" y2="${y.toFixed(1)}"></line>`;
+  }).join("");
+
+  const pts = coords.map(([x, y], i) => {
+    const p = points[i];
+    return `
+      <circle class="pt" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" stroke="url(#gradLine)"></circle>
+      ${p.value ? `<text class="pt-label" x="${x.toFixed(1)}" y="${(y - 9).toFixed(1)}">${p.value}</text>` : ""}
+      <text class="day-label" x="${x.toFixed(1)}" y="${H - 3}">${escapeHtml(p.label)}</text>`;
+  }).join("");
+
+  return `
+    <svg class="grad-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="gradLine" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="var(--grad-start)"></stop>
+          <stop offset="50%" stop-color="var(--grad-mid)"></stop>
+          <stop offset="100%" stop-color="var(--grad-end)"></stop>
+        </linearGradient>
+        <linearGradient id="gradArea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--grad-mid)" stop-opacity="0.35"></stop>
+          <stop offset="100%" stop-color="var(--grad-mid)" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      ${grid}
+      <path class="area-fill" d="${areaPath}"></path>
+      <path class="line-stroke" d="${linePath}"></path>
+      ${pts}
+    </svg>`;
+}
+
 function renderFood(rows) {
   const content = document.getElementById("content");
   const byDay = Object.fromEntries(rows.map(r => [r.day, r]));
 
   const todayStr = localDateStr(new Date());
-  const todayCals = byDay[todayStr]?.calories ?? 0;
+  const todayRow = byDay[todayStr];
+  const todayCals = todayRow?.calories ?? 0;
   const daysWithData = rows.length || 1;
   const avg = Math.round(rows.reduce((s, r) => s + (r.calories || 0), 0) / daysWithData);
 
@@ -673,29 +801,31 @@ function renderFood(rows) {
     d.setDate(d.getDate() - i);
     days.push(localDateStr(d));
   }
-  const maxCal = Math.max(1, ...days.map(d => byDay[d]?.calories || 0));
+  const points = days.map(day => ({
+    label: WEEKDAY_SHORT[new Date(day + "T00:00:00").getDay()],
+    value: byDay[day]?.calories || 0,
+  }));
 
-  let bars = "";
-  for (const day of days) {
-    const cal = byDay[day]?.calories || 0;
-    const h = Math.round((cal / maxCal) * 100);
-    const wd = WEEKDAY_SHORT[new Date(day + "T00:00:00").getDay()];
-    bars += `
-      <div class="bar-col">
-        <div class="bar-val">${cal ? cal : ""}</div>
-        <div class="bar" style="height:${Math.max(h, cal ? 4 : 0)}%"></div>
-        <div class="bar-day">${wd}</div>
-      </div>`;
-  }
+  const macros = [
+    { key: "protein_g", label: "Белки", color: "var(--c-protein)" },
+    { key: "fat_g", label: "Жиры", color: "var(--c-fat)" },
+    { key: "carbs_g", label: "Углеводы", color: "var(--c-carbs)" },
+  ];
+  const macroHtml = macros.map(m => `
+    <div class="macro-tile" style="--macro-color:${m.color}">
+      <div class="macro-val">${todayRow?.[m.key] ?? 0}г</div>
+      <div class="macro-label">${m.label}</div>
+    </div>`).join("");
 
   content.innerHTML = `
     <div class="stat-row">
-      <div class="stat-tile"><div class="stat-value">${todayCals}</div><div class="stat-label">ккал сегодня</div></div>
-      <div class="stat-tile"><div class="stat-value">${avg}</div><div class="stat-label">в среднем за неделю</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--grad-mid)"><div class="stat-value">${todayCals}</div><div class="stat-label">ккал сегодня</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--grad-end)"><div class="stat-value">${avg}</div><div class="stat-label">в среднем за неделю</div></div>
     </div>
+    <div class="macro-row">${macroHtml}</div>
     <div class="chart-wrap">
       <div class="chart-title">Калории за 7 дней</div>
-      <div class="bars">${bars}</div>
+      ${gradientLineChart(points)}
     </div>`;
 }
 
